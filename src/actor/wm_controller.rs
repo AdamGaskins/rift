@@ -431,6 +431,7 @@ impl WmController {
             pid,
             info,
             self.events_tx.clone(),
+            self.event_tap_tx.clone(),
             self.window_tx_store.clone(),
         );
     }

@@ -22,7 +22,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, Span, debug, error, info, instrument, trace, warn};
 
-use crate::actor;
+use crate::actor::{self, event_tap};
 use crate::actor::reactor::transaction_manager::TransactionId;
 use crate::actor::reactor::{self, Event, Requested};
 use crate::common::collections::{HashMap, HashSet};
@@ -229,11 +229,12 @@ pub fn spawn_app_thread(
     pid: pid_t,
     info: AppInfo,
     events_tx: reactor::Sender,
+    event_tap_tx: event_tap::Sender,
     tx_store: Option<WindowTxStore>,
 ) {
     thread::Builder::new()
         .name(format!("{}({pid})", info.bundle_id.as_deref().unwrap_or("")))
-        .spawn(move || app_thread_main(pid, info, events_tx, tx_store))
+        .spawn(move || app_thread_main(pid, info, events_tx, event_tap_tx, tx_store))
         .unwrap();
 }
 
@@ -244,6 +245,7 @@ struct State {
     app: AXUIElement,
     observer: Observer,
     events_tx: reactor::Sender,
+    event_tap_tx: event_tap::Sender,
     windows: HashMap<WindowId, AppWindowState>,
     last_window_idx: u32,
     main_window: Option<WindowId>,
@@ -731,6 +733,7 @@ impl State {
                 _ = self.on_activation_changed();
             }
             kAXMainWindowChangedNotification => {
+                _ = self.event_tap_tx.send(event_tap::Request::EnforceHidden);
                 // NOTE(acsandmann):
                 // because of apps like firefox that send delayed(or dont send at all) axuielementdestroyed/windowserverdisappeared
                 // this is a fallback to ensure we handle windows being closed
@@ -1378,6 +1381,7 @@ fn app_thread_main(
     pid: pid_t,
     info: AppInfo,
     events_tx: reactor::Sender,
+    event_tap_tx: event_tap::Sender,
     tx_store: Option<WindowTxStore>,
 ) {
     let app = AXUIElement::application(pid);
@@ -1417,6 +1421,7 @@ fn app_thread_main(
         app: app.clone(),
         observer,
         events_tx,
+        event_tap_tx,
         windows: HashMap::default(),
         last_window_idx: 0,
         main_window: None,
