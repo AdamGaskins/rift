@@ -230,6 +230,8 @@ pub enum Event {
 
     #[serde(skip)]
     ConfigUpdated(Config),
+
+    EnsureMouseHidden(),
 }
 
 pub struct Reactor {
@@ -849,6 +851,7 @@ impl Reactor {
                 | Event::ApplicationMainWindowChanged(..)
                 | Event::RegisterWmSender(..)
                 | Event::ConfigUpdated(..)
+                | Event::EnsureMouseHidden(..)
                 | Event::Command(..)
                 | Event::RaiseCompleted { .. }
                 | Event::RaiseTimeout { .. }
@@ -1066,6 +1069,11 @@ impl Reactor {
             }
             Event::Command(cmd) => {
                 CommandEventHandler::handle_command(self, cmd);
+            }
+            Event::EnsureMouseHidden() => {
+                if let Some(event_tap_tx) = self.communication_manager.event_tap_tx.clone() {
+                    _ = event_tap_tx.send(event_tap::Request::EnforceHidden);
+                }
             }
             _ => (),
         }
